@@ -111,3 +111,5 @@ jobs:
           body: "[![Github](https://img.shields.io/badge/可套用国内加速站下载-FC7C0D?logo=github&logoColor=fff&labelColor=000&style=for-the-badge)](https://wkdaily.cpolar.cn/archives/1)"
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# [RunFilesBuilder-Custom] 本仓库已与上游解除 fork 关系，独立维护；同步上游请运行 sync-upstream.yml

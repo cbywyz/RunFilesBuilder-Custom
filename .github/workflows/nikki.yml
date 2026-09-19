@@ -136,3 +136,5 @@ jobs:
           token: ${{ secrets.GITHUB_TOKEN }}
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+# [RunFilesBuilder-Custom] 本仓库已与上游解除 fork 关系，独立维护；同步上游请运行 sync-upstream.yml
