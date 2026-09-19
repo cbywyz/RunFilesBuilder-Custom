@@ -1,0 +1,96 @@
+# ============================================================
+#  同步上游（只增不减）
+# ------------------------------------------------------------
+#  本仓库已与 wukongdaily/RunFilesBuilder 解除 fork 关系，
+#  上游网页上那个「Sync fork」按钮再也影响不到你。
+#
+#  以后想拿上游的新东西：
+#    Actions 页面 -> 左侧点「同步上游（只增不减）」-> Run workflow
+#
+#  它的行为：
+#    - 上游新增的文件  -> 拉进来
+#    - 上游改过的文件  -> 更新（但保护清单里的文件不覆盖）
+#    - 上游删掉的文件  -> 保留本地版本，绝不删除
+#
+#  想保护自己改过的文件：把路径加到 .github/upstream-sync-protect.txt
+# ============================================================
+name: 同步上游（只增不减）
+
+on:
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: "只预览不提交"
+        type: boolean
+        required: false
+        default: false
+  # 想每周自动同步就取消下面两行的注释
+  # schedule:
+  #   - cron: '0 20 * * 0'
+
+permissions:
+  contents: write
+
+env:
+  UPSTREAM_REPO: wukongdaily/RunFilesBuilder
+  UPSTREAM_BRANCH: master
+  PROTECT_FILE: .github/upstream-sync-protect.txt
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: 拉取本仓库
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: 抓取上游
+        run: |
+          git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
+          git fetch upstream "${UPSTREAM_BRANCH}" --tags --force
+          echo "本仓库 HEAD : $(git rev-parse --short HEAD)"
+          echo "上游   HEAD : $(git rev-parse --short upstream/${UPSTREAM_BRANCH})"
+
+      - name: 上游已删除、但我们保留下来的文件
+        run: |
+          echo "下面这些文件上游已经删了，本仓库继续保留："
+          git diff --diff-filter=D --name-only HEAD "upstream/${UPSTREAM_BRANCH}" || true
+          echo "（以上为空说明上游没删过东西）"
+
+      - name: 只增不减地合并
+        run: |
+          set -e
+          # 把上游文件覆盖进工作区。checkout 只写不删，
+          # 所以本仓库独有的文件会原样留下。
+          git checkout "upstream/${UPSTREAM_BRANCH}" -- .
+          # 再恢复保护清单里的文件，保住自己的改动
+          if [ -f "$PROTECT_FILE" ]; then
+            while IFS= read -r f; do
+              f="$(printf '%s' "$f" | tr -d '\r' | sed 's/^[[:space:]]*//;s/[[:space:]]*$//')"
+              case "$f" in ''|'#'*) continue ;; esac
+              if git cat-file -e "HEAD:$f" 2>/dev/null; then
+                git checkout HEAD -- "$f"
+                echo "  [保护] 保留本地版本: $f"
+              fi
+            done < "$PROTECT_FILE"
+          else
+            echo "  没有保护清单，跳过"
+          fi
+          echo "--- 同步后工作区变更 ---"
+          git status --short || true
+
+      - name: 提交并推送
+        if: ${{ !(github.event_name == 'workflow_dispatch' && inputs.dry_run) }}
+        run: |
+          set -e
+          if git diff --quiet && git diff --cached --quiet; then
+            echo "上游没有新变化，无需提交。"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore(sync): 同步上游 ${UPSTREAM_REPO}（只增不减，本地文件不删除）"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
+          echo "已推送到分支 ${GITHUB_REF_NAME}"
